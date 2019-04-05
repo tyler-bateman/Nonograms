@@ -47,14 +47,24 @@
       private int[][] columns;
 
       private char[][] picture;
+      private boolean[][] certainty;
 
+      /** Constructor */
       public Nonogram(String[] columns, String[] rows) {
         this.picture = new char[rows.length][columns.length];
+        for(int i = 0; i < picture.length; i++) {
+          for(int j = 0; j < picture[i].length; j++) {
+            picture[i][j] = ' ';
+          }
+        }
+        this.certainty = new boolean[rows.length][columns.length];
 
         this.rows = parseClues(rows);
         this.columns = parseClues(columns);
 
       }
+
+      /** Parses the clues given in the text files into usable arrays */
       private int[][] parseClues(String[] clues) {
         int[][] clueMatrix = new int[clues.length][];
 
@@ -86,17 +96,22 @@
         return clueMatrix;
       }
 
+      /** fills the given cell in the array */
       public void fill(int row, int col) {
         picture[row][col] = 9632;
       }
 
+      /** cross out the given cell in the array */
       public void cross(int row, int col) {
         picture[row][col] = '-';
       }
+
+      /** Clear the given cell in the array */
       public void clear(int row, int col) {
         picture[row][col] = ' ';
       }
 
+      /*Solves the puzzle by populating and printing the picture array*/
       public void solve() {
         int totalRowFilled = 0;
         for(int i = 0; i < rows.length; i++) {
@@ -111,35 +126,93 @@
           }
         }
         if(totalRowFilled == totalColFilled) {
-          solve(0, 0);
+          fillObvious();
+          //backtrackSolve(0, 0);
+          printPicture();
         } else {
           System.out.println("No solution (Total filled mismatch)");
         }
 
       }
 
-      public void solve(int row, int col) {
+      /** Fills in spots that can be easily determined by counting through
+        * individual rows and columns */
+      private void fillObvious() {
+        //Fill cells by row
+        for(int i = 0; i < picture.length; i++) {
+          int usedSpace = rows[i].length - 1; //The amount of space used when the clues for this row are compressed as much as possible
+          for(int j = 0; j < rows[i].length; j++) {
+            usedSpace += rows[i][j];
+          }
+
+          int extraSpace = picture[i].length - usedSpace;
+          int blockEnd = extraSpace; //The end of the block being partially filled
+          for(int j = 0; j < rows[i].length; j++) {
+            for(int k = blockEnd; k < blockEnd + rows[i][j] - extraSpace; k++) {
+              fill(i, k);
+              certainty[i][k] = true;
+            }
+            if(blockEnd != 0 && extraSpace == 0) {
+              cross(i, blockEnd - 1);
+              certainty[i][blockEnd - 1] = true;
+            }
+            blockEnd += rows[i][j] + 1;
+          }
+        }
+
+        //Fill cells by column
+        for(int i = 0; i < picture[0].length; i++) {
+          int usedSpace = columns[i].length - 1; //The amount of space used when the clues for this column are compressed as much as possible
+          for(int j = 0; j < columns[i].length; j++) {
+            usedSpace += columns[i][j];
+          }
+
+          int extraSpace = picture.length - usedSpace;
+          int blockEnd = extraSpace; //The end of the block being partially filled
+          for(int j = 0; j < columns[i].length; j++) {
+            for(int k = blockEnd; k < blockEnd + columns[i][j] - extraSpace; k++) {
+              fill(k, i);
+              certainty[k][i] = true;
+            }
+            if(blockEnd != 0 && extraSpace == 0){
+              cross(blockEnd - 1, i);
+              certainty[blockEnd - 1][i] = true;
+            }
+            blockEnd += columns[i][j] + 1;
+          }
+        }
+      }
+
+      /** Fills in uncertain spots in the puzzle array(indicated by the certainty
+        * array) with a backtracking algorithm */
+      private void backtrackSolve(int row, int col) {
         if(row >= picture.length) {
           printPicture();
           System.out.println("Elapsed time: " + (System.nanoTime() - startTime) + " seconds");
           System.exit(0);
+        } else if(certainty[row][col]) {
+          if(col < picture[0].length - 1) {
+            backtrackSolve(row, col + 1);
+          } else {
+            backtrackSolve(row + 1, 0);
+          }
         } else {
           cross(row, col);
           boolean successful = validateRow(row) && validateCol(col);
           if(successful) {
             if(col < picture[0].length - 1) {
-              solve(row, col + 1);
+              backtrackSolve(row, col + 1);
             } else {
-              solve(row + 1, 0);
+              backtrackSolve(row + 1, 0);
             }
           }
           fill(row, col);
           successful = validateRow(row) && validateCol(col);
           if(successful) {
             if(col < picture[0].length - 1) {
-              solve(row, col + 1);
+              backtrackSolve(row, col + 1);
             } else {
-              solve(row + 1, 0);
+              backtrackSolve(row + 1, 0);
             }
           }
           clear(row, col);
@@ -149,7 +222,11 @@
         }
       }
 
-      public boolean validateRow(int row) {
+      /** Validates a given row. If the filled spots are valid, return true.
+        * otherwise return false */
+      private boolean validateRow(int row) {
+        //TODO update to be compatible with fillObvious method
+
         boolean filled = false;
         int block = 0;
         int blockLength = 0;
@@ -198,7 +275,11 @@
 
       }
 
-      public boolean validateCol(int col) {
+      /** Validates a given row. If the filled spots are valid, return true.
+        * otherwise return false */
+      private boolean validateCol(int col) {
+        //TODO update to be compatible with fillObvious method
+
         boolean filled = false;
         int block = 0;
         int blockLength = 0;
@@ -246,6 +327,8 @@
         return true;
       }
 
+      /** Prints the puzzle including the clues and the contents of the picture
+        * array */
       public void printPicture() {
 
         int maxRowClues = maxLength(rows);
