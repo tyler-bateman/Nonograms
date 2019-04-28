@@ -11,8 +11,8 @@
   import java.util.Stack;
 
   public class NonogramSolver{
-    public char fillChar = (char)9632;
-    public char xChar = '-';
+    public static char fillChar = (char)9632;
+    public static char xChar = '-';
     static double startTime;
     public static void main (String[] args) throws FileNotFoundException {
       startTime = System.nanoTime();
@@ -216,7 +216,7 @@
 
           //Fill in cells made obvious by the guess
           boolean successRight = propagateRight(fillStack, row, col);
-          boolean successDown = propagateLeft(fillStack, row, col);
+          boolean successDown = propagateDown(fillStack, row, col);
 
           if(successRight && successDown) {
           //If the guess didn't result in a contradiction, move on
@@ -250,11 +250,17 @@
             } else {
             // If the guess resulted in a contradiction, revert all changes since
             // the last unexhasted uncertain cell
-              int[] prevGuess = guesStack.pop();
+              if(guessStack.isEmpty()) {
+                return false;
+              }
+              int[] prevGuess = guessStack.pop();
               while(picture[prevGuess[0]][prevGuess[1]] == xChar) {
+                if(guessStack.isEmpty()) {
+                  return false;
+                }
                 prevGuess = guessStack.pop();
               }
-              int[] cur = fillStack.pop();
+              cur = fillStack.pop();
               while(!cur.equals(prevGuess)) {
                 clear(cur[0], cur[1]);
                 cur = fillStack.pop();
@@ -262,6 +268,7 @@
             }
           }
         }
+        return true;
       }
 
       /** Fills out the cells that can be easily solved in a row
@@ -271,13 +278,13 @@
                col < picture[0].length - 1
         * Post: the coordinates of all modified cells are pushed to fillStack
         */
-      private boolean fillKnownSpacesH(fillStack, row, col) {
+      private boolean fillKnownSpacesH(Stack<int[]> fillStack, int row, int col) {
         int startBlock = getBlock(true, row, col);
         int usedSpace = rows[row].length - startBlock - 1; //The amount of space used when the clues for this row are compressed as much as possible
         for(int i = startBlock; i < rows[row].length; i++) {
           usedSpace += rows[row][i];
         }
-        int extraSpace = picture[i].length - col - usedSpace;
+        int extraSpace = picture[row].length - col - usedSpace;
         int blockEnd = col + extraSpace + 1; // The end of the block being partially filled
         for(int i = 0; i < rows[row].length; i++) {
           for(int j = blockEnd; j < blockEnd + rows[row][i] - extraSpace; j++) {
@@ -285,8 +292,9 @@
               return false;
             }
             fill(row, j);
-            fillStack.push({row, j});
-            if(!extrapolateDown(fillStack, row, col)) {
+            int[] coord = {row, j};
+            fillStack.push(coord);
+            if(!propagateDown(fillStack, row, col)) {
               return false;
             }
           }
@@ -295,7 +303,8 @@
               return false;
             }
             cross (row, blockEnd - 1);
-            fillStack.push({row, blockEnd - 1});
+            int[] coord = {row, blockEnd - 1};
+            fillStack.push(coord);
           }
           blockEnd += rows[row][i] + 1;
         }
@@ -309,33 +318,35 @@
         *      row < picture.length - 1
         * Post: The coordinates of all modified cells are pushed to fillStack
         */
-      private boolean fillKnownSpacesV(fillStack, row, col) {
+      private boolean fillKnownSpacesV(Stack<int[]> fillStack, int row, int col) {
         int startBlock = getBlock(false, row, col);
         int usedSpace = rows[row].length - startBlock - 1; //The amount of space used when the clues for this column are compressed as much as possible
-        for(int i = startBlock; i < cols[col].length; i++) {
-          usedSpace += cols[col][i];
+        for(int i = startBlock; i < columns[col].length; i++) {
+          usedSpace += columns[col][i];
         }
         int extraSpace = picture.length - row - usedSpace;
         int blockEnd = row + extraSpace + 1;
-        for(int i = 0; i < cols[col].length; i++) {
-          for(int j = blockEnd; j < blockEnd + cols[col][i] - extraSpace; j++) {
+        for(int i = 0; i < columns[col].length; i++) {
+          for(int j = blockEnd; j < blockEnd + columns[col][i] - extraSpace; j++) {
             if(j >= picture.length || picture[j][col] == xChar) {
               return false;
             }
             fill(j, col);
-            fillStack.push({j, col});
+            int[] coord = {j, col};
+            fillStack.push(coord);
           }
           if(blockEnd != 0 && extraSpace == 0) {
             if(picture[blockEnd - 1][col] == fillChar) {
               return false;
             }
             cross(blockEnd - 1, col);
-            fillStack.push({blockEnd - 1, col});
-            if(!extrapolateRight(fillStack, row, col)) {
+            int[] coord = {blockEnd - 1, col};
+            fillStack.push(coord);
+            if(!propagateRight(fillStack, row, col)) {
               return false;
             }
           }
-          blockEnd += cols[col][i] + 1;
+          blockEnd += columns[col][i] + 1;
         }
         return true;
       }
@@ -360,7 +371,8 @@
               return false;
             }
             fill(row, i);
-            fillStack.push({row, i});
+            int[] coord = {row, i};
+            fillStack.push(coord);
           }
           //If the whole block is filled put an x on the end
           if(blockStart == col) {
@@ -368,7 +380,8 @@
               return false;
             }
             cross(row, col + blockSize);
-            fillStack.push({row, col + blockSize});
+            int[] coord = {row, col + blockSize};
+            fillStack.push(coord);
           }
           //propagate all the filled in blocks
           for(int i = col; i < blockStart + blockSize; i++) {
@@ -387,21 +400,23 @@
       private boolean propagateDown(Stack<int[]> fillStack, int row, int col) {
         int block = getBlock(false, row, col);
         if(block != -1) {
-          int blockSize = cols[col][block];
+          int blockSize = columns[col][block];
           //Find the start of the block being propagated
           int blockStart = row;
-          while(blockStart > 0 && picture[blockStart - 1] != xChar) {
+          while(blockStart > 0 && picture[col][blockStart - 1] != xChar) {
             blockStart--;
           }
           //Fill in the known portion of the block
           for(int i = row; i < blockStart + blockSize; i++) {
             fill(i, col);
-            fillStack.push({i, col});
+            int[] coord = {i, col};
+            fillStack.push(coord);
           }
           //If the whole block is filled put an x on the end
           if(blockStart == col) {
             cross(row + blockSize, col);
-            fillStack.push({row + blockSize, col});
+            int[] coord = {row + blockSize, col};
+            fillStack.push(coord);
           }
           //propagate all the filled in blocks
           for(int i = row; i < blockStart + blockSize; i++) {
@@ -410,6 +425,7 @@
             }
           }
         }
+        return true;
       }
 
       /* Returns the block being worked on at a given space
@@ -429,10 +445,10 @@
               while(blockStart > 0 && picture[row][blockStart - 1] != xChar) {
                 blockStart--;
               }
-              if(col - blockStart <= rowClues[block] + 1) {
+              if(col - blockStart <= rows[row][block] + 1) {
               //The cell must be part of the current block
                 return block;
-              } else if(block != rowClues.length - 1 && picture[row][blockStart] == fillChar && (col - blockStart) < (rowClues[block] + rowClues[block + 1] + 2)) {
+              } else if(block != rows[row].length - 1 && picture[row][blockStart] == fillChar && (col - blockStart) < (rows[row][block] + rows[row][block + 1] + 2)) {
               //The cell must be part of the next block
                 return block + 1;
               } else {
@@ -455,10 +471,10 @@
               while(blockStart > 0 && picture[blockStart - 1][col] != xChar) {
                 blockStart--;
               }
-              if(col - blockStart <= colClues[block] + 1) {
+              if(col - blockStart <= columns[col][block] + 1) {
                 //The cell must be part of the current block
                 return block;
-              } else if(block != colClues.length - 1 && picture[blockStart][col] == fillChar && (row - blockStart) < (colClues[block] + colClues[block + 1] + 2)){
+              } else if(block != columns[col].length - 1 && picture[blockStart][col] == fillChar && (row - blockStart) < (columns[col][block] + columns[col][block + 1] + 2)){
               //The cell must be part of the next block
                 return block + 1;
               } else {
