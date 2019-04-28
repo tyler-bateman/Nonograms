@@ -8,7 +8,11 @@
   import java.io.FileNotFoundException;
   import java.util.Scanner;
   import java.util.Arrays;
+  import java.util.Stack;
+
   public class NonogramSolver{
+    public char fillChar = (char)9632;
+    public char xChar = '-';
     static double startTime;
     public static void main (String[] args) throws FileNotFoundException {
       startTime = System.nanoTime();
@@ -98,12 +102,12 @@
 
       /** fills the given cell in the array */
       public void fill(int row, int col) {
-        picture[row][col] = 9632;
+        picture[row][col] = fillChar;
       }
 
       /** cross out the given cell in the array */
       public void cross(int row, int col) {
-        picture[row][col] = '-';
+        picture[row][col] = xChar;
       }
 
       /** Clear the given cell in the array */
@@ -198,7 +202,7 @@
           }
         } else {
           cross(row, col);
-          boolean successful = validateRow(row) && validateCol(col);
+          boolean successful = validateLine(row, 'r', rows[row]) && validateCol(col, 'c', columns[col]);
           if(successful) {
             if(col < picture[0].length - 1) {
               backtrackSolve(row, col + 1);
@@ -207,7 +211,7 @@
             }
           }
           fill(row, col);
-          successful = validateRow(row) && validateCol(col);
+          successful = validateLine(row, 'r', rows[row]) && validateCol(col, 'c', columns[col]);
           if(successful) {
             if(col < picture[0].length - 1) {
               backtrackSolve(row, col + 1);
@@ -222,56 +226,178 @@
         }
       }
 
-      /** Validates a given row. If the filled spots are valid, return true.
-        * otherwise return false */
-      private boolean validateRow(int row) {
-        //TODO update to be compatible with fillObvious method
-
-        boolean filled = false;
-        int block = 0;
-        int blockLength = 0;
-        int i;
-        for(i = 0; i < picture[row].length; i++) {
-          if(picture[row][i] == 9632) {
-            if(filled) {
-              blockLength++;
-              if(blockLength > rows[row][block - 1]) {
-                return false;
+      /* Solves the puzzle with a stack implementation of backtracking*/
+      private void stackSolve() {
+        Stack<int[]> guessStack = new Stack<int[]>();
+        Stack<int[]> fillStack = new Stack<int[]>();
+        int row = 0;
+        int col = 0;
+        main:while(row < picture.length) {
+          //Skips over filled cells
+          while(picture[row][col] = ' ') {
+            if(col == picture[0].length - 1) {
+              row ++;
+              col = 0;
+              if(row >= picture.length) {
+                break main;
               }
             } else {
-              blockLength = 1;
-              block ++;
-              filled = true;
-              if(block > rows[row].length) {
-                return false;
-              }
+              x ++;
             }
-          } else if(picture[row][i] == '-') {
-            if(filled) {
-              filled = false;
-              if(blockLength < rows[row][block - 1]) {
-                return false;
-              }
-            }
-          } else {
-            break;
+          }
+
+          fill(row, col);
+          int[] guess = {row, col};
+          guessStack.push(guess);
+
+          int blockStart = x;
+          while(blockStart > 0 && picture[blockStart][col] != xChar) {
+            blockStart--;
           }
         }
-        if(filled) {
-          i += rows[row][block - 1] - blockLength;
-          if(i > picture[row].length) {
-            return false;
+      }
+      /*Fills in the imediate known filled spaces due to a filled space
+        Returns false if it results in a contradiction, otherwise returns true*/
+      private boolean extrapolate(Stack<int[]> fillStack, int row, int col) {
+
+      }
+
+      /* Returns the block being worked on at a given space
+       * If the block is unknown, returns -1
+       * @param orientation: true for horiziontal, false for vertical
+       * @param row: the row of the cell in question
+       * @param col: the column of the cell in question
+       * Precondition: picture[row][col] == fillChar
+       */
+      private int getBlock(boolean orientation, int row, int col) {
+        int block = 0;
+        if(orientation) { //Horizontal
+          for(int i = 0; i < col; i++) {
+            //Handles the ambiguous case where there is an unknown space
+            if(picture[row][i] == ' ') {
+              int blockStart = i;
+              while(blockStart > 0 && picture[row][blockStart - 1] != xChar) {
+                blockStart--;
+              }
+              if(col - blockStart <= rowClues[block] + 1) {
+              //The cell must be part of the current block
+                return block;
+              } else if(block != rowClues.length - 1 && picture[row][blockStart] == fillChar && (col - blockStart) < (rowClues[block] + rowClues[block + 1] + 2)) {
+              //The cell must be part of the next block
+                return block + 1;
+              } else {
+              //The block cannot be (easily) determined
+                return - 1;
+              }
+            } else {
+              //Counts the blocks leading up to the cell in question
+              if(i > 0 && picture[row][i] == xChar && picture[row][i - 1] == fillChar) {
+                block ++;
+              }
+            }
           }
+          return block;
+        } else { //Vertical
+          for(int i = 0; i < row; i++) {
+            //Handles the ambiguous case where there is an unknown space
+            if(picture[i][col] == ' ') {
+              int blockStart = i;
+              while(blockStart > 0 && picture[blockStart - 1][col] != xChar) {
+                blockStart--;
+              }
+              if(col - blockStart <= colClues[block] + 1) {
+                //The cell must be part of the current block
+                return block;
+              } else if(block != colClues.length - 1 && picture[blockStart][col] == fillChar && (row - blockStart) < (colClues[block] + colClues[block + 1] + 2)){
+              //The cell must be part of the next block
+                return block + 1;
+              } else {
+              //The block cannot be (easily) determined
+                return -1;
+              }
+            } else {
+              //Counts the blocks leading up to the cell in question
+              if(i > 0 && picture[i][col] == xChar && picture[i - 1][col] == fillChar) {
+                block++;
+              }
+            }
+            //Counts the blocks leading up to the cell in question
+            if(picture[i][col] == xChar && picture[i - 1][col] == fillChar){
+              block++;
+            }
+          }
+        }
+        return block;
+      }
+
+      /** Validates a given line. If the filled spots are valid, return true.
+        * otherwise return false
+        * @param index the row or column to be validated
+        * @param orientation specifies whether it is a row('r') or a column('c')
+        *                    Orientation defaults to row
+        * @param clues the clues given for the specified line
+         */
+      private boolean validateLine(int index, char orientation, int[] clues) {
+        //Declare and initialize line
+        char[] line = null;
+        if(orientation == 'c') {
+          line = new char[picture.length];
+          for(int i = 0; i < picture.length; i++) {
+            line[i] = picture[i][index];
+          }
+        } else {
+          line = picture[index];
         }
 
-        for(int j = block; j < rows[row].length; j++) {
-          i += rows[row][j];
-          if(i > picture[row].length) {
+        int cell = 0;
+        int block = 0;
+        //Confirm that there is enough space to complete the line
+        while(block < clues.length) {
+          if(cell >= line.length) {
             return false;
           }
-          i++;
+          //Skip over x characters
+          if(line[cell] == xChar ) {
+            continue;
+          }
+          int i;
+          for(i = cell; i < cell + clues[block]; i++) {
+            if(i >= line.length) {
+              return false;
+            }
+            if(line[i] == xChar) {
+              block --;
+              break;
+            }
+          }
+          cell = i;
+          do {
+            cell ++;
+          } while(cell < line.length && line[cell] == fillChar);
+
+          block ++;
         }
-        return true;
+
+        //Confirm that the blocks already filled do not overfill the clues
+        int block = 0;
+        int spaceStart = 0;
+        char prevChar = xChar;
+        boolean filled = true;
+        for(cell = 0; cell < line.length; cell++) {
+          if(line[cell] != xChar && prevChar = xChar) {
+            spaceStart = cell;
+          }
+          if(line[cell] == fillChar && prevChar != fillChar) {
+            for(int i = cell; i < Math.max(spaceStart + clues[block], cell); i++) {
+              if(lines[i] == xChar) {
+                cell = i;
+
+              }
+            }
+          }
+
+          prevChar = lines[cell];
+        }
 
       }
 
@@ -285,7 +411,7 @@
         int blockLength = 0;
         int i;
         for(i = 0; i < picture.length; i++) {
-          if(picture[i][col] == 9632) {
+          if(picture[i][col] == fillChar) {
             if(filled) {
               blockLength++;
               if(blockLength > columns[col][block - 1]) {
@@ -299,7 +425,7 @@
                 return false;
               }
             }
-          } else if(picture[i][col] == '-') {
+          } else if(picture[i][col] == xChar) {
             if(filled) {
               filled = false;
               if(blockLength < columns[col][block - 1]) {
