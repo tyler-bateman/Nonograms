@@ -131,7 +131,7 @@
         }
         if(totalRowFilled == totalColFilled) {
           fillObvious();
-          //backtrackSolve(0, 0);
+          //stackSolve;
           printPicture();
         } else {
           System.out.println("No solution (Total filled mismatch)");
@@ -187,54 +187,17 @@
         }
       }
 
-      /** Fills in uncertain spots in the puzzle array(indicated by the certainty
-        * array) with a backtracking algorithm */
-      private void backtrackSolve(int row, int col) {
-        if(row >= picture.length) {
-          printPicture();
-          System.out.println("Elapsed time: " + (System.nanoTime() - startTime) + " seconds");
-          System.exit(0);
-        } else if(certainty[row][col]) {
-          if(col < picture[0].length - 1) {
-            backtrackSolve(row, col + 1);
-          } else {
-            backtrackSolve(row + 1, 0);
-          }
-        } else {
-          cross(row, col);
-          boolean successful = validateLine(row, 'r', rows[row]) && validateCol(col, 'c', columns[col]);
-          if(successful) {
-            if(col < picture[0].length - 1) {
-              backtrackSolve(row, col + 1);
-            } else {
-              backtrackSolve(row + 1, 0);
-            }
-          }
-          fill(row, col);
-          successful = validateLine(row, 'r', rows[row]) && validateCol(col, 'c', columns[col]);
-          if(successful) {
-            if(col < picture[0].length - 1) {
-              backtrackSolve(row, col + 1);
-            } else {
-              backtrackSolve(row + 1, 0);
-            }
-          }
-          clear(row, col);
-          if(row == 0 && col == 0) {
-            System.out.println("No solution found");
-          }
-        }
-      }
-
-      /* Solves the puzzle with a stack implementation of backtracking*/
-      private void stackSolve() {
+      /* Solves the puzzle with a stack implementation of backtracking
+       * Returns true if a solution is found, otherwise returns false
+       */
+      private boolean stackSolve() {
         Stack<int[]> guessStack = new Stack<int[]>();
         Stack<int[]> fillStack = new Stack<int[]>();
         int row = 0;
         int col = 0;
         main:while(row < picture.length) {
           //Skips over filled cells
-          while(picture[row][col] = ' ') {
+          while(picture[row][col] != ' ') {
             if(col == picture[0].length - 1) {
               row ++;
               col = 0;
@@ -242,24 +205,211 @@
                 break main;
               }
             } else {
-              x ++;
+              col++;
             }
           }
-
+          //Fill in the first empty cell
           fill(row, col);
           int[] guess = {row, col};
           guessStack.push(guess);
+          fillStack.push(guess);
 
-          int blockStart = x;
-          while(blockStart > 0 && picture[blockStart][col] != xChar) {
-            blockStart--;
+          //Fill in cells made obvious by the guess
+          boolean successRight = propagateRight(fillStack, row, col);
+          boolean successDown = propagateLeft(fillStack, row, col);
+
+          if(successRight && successDown) {
+          //If the guess didn't result in a contradiction, move on
+            if(col == picture[0].length - 1) {
+              row ++;
+              col = 0;
+            } else {
+              col++;
+            }
+          } else {
+          //If the guess resulted in a contradiction, revert all changes since the guess
+            int[] cur = fillStack.pop();
+            while(!cur.equals(guess)) {
+              clear(cur[0], cur[1]);
+              cur = fillStack.pop();
+            }
+            //Cross out the cell instead
+            cross(row, col);
+            //Fill in cells made obvious by guess
+            successRight = fillKnownSpacesH(fillStack, row, col);
+            successDown = fillKnownSpacesV(fillStack, row, col);
+
+            if(successRight && successDown) {
+            //If the guess didn't result in a contradiction, move on
+              if(col == picture[0].length - 1) {
+                row++;
+                col = 0;
+              } else {
+                col++;
+              }
+            } else {
+            // If the guess resulted in a contradiction, revert all changes since
+            // the last unexhasted uncertain cell
+              int[] prevGuess = guesStack.pop();
+              while(picture[prevGuess[0]][prevGuess[1]] == xChar) {
+                prevGuess = guessStack.pop();
+              }
+              int[] cur = fillStack.pop();
+              while(!cur.equals(prevGuess)) {
+                clear(cur[0], cur[1]);
+                cur = fillStack.pop();
+              }
+            }
           }
         }
       }
-      /*Fills in the imediate known filled spaces due to a filled space
-        Returns false if it results in a contradiction, otherwise returns true*/
-      private boolean extrapolate(Stack<int[]> fillStack, int row, int col) {
 
+      /** Fills out the cells that can be easily solved in a row
+        * Returns true if successful, otherwise false
+        * Pre: picture[row][0..col] != ' '
+               picture[row][col] == xChar
+               col < picture[0].length - 1
+        * Post: the coordinates of all modified cells are pushed to fillStack
+        */
+      private boolean fillKnownSpacesH(fillStack, row, col) {
+        int startBlock = getBlock(true, row, col);
+        int usedSpace = rows[row].length - startBlock - 1; //The amount of space used when the clues for this row are compressed as much as possible
+        for(int i = startBlock; i < rows[row].length; i++) {
+          usedSpace += rows[row][i];
+        }
+        int extraSpace = picture[i].length - col - usedSpace;
+        int blockEnd = col + extraSpace + 1; // The end of the block being partially filled
+        for(int i = 0; i < rows[row].length; i++) {
+          for(int j = blockEnd; j < blockEnd + rows[row][i] - extraSpace; j++) {
+            if(j >= picture[row].length || picture[row][j] == xChar) {
+              return false;
+            }
+            fill(row, j);
+            fillStack.push({row, j});
+            if(!extrapolateDown(fillStack, row, col)) {
+              return false;
+            }
+          }
+          if(blockEnd != 0 && extraSpace == 0) {
+            if(picture[row][blockEnd - 1] == fillChar){
+              return false;
+            }
+            cross (row, blockEnd - 1);
+            fillStack.push({row, blockEnd - 1});
+          }
+          blockEnd += rows[row][i] + 1;
+        }
+        return true;
+      }
+
+      /** Fills out the cells thac can be easily solved in a column
+        * Returns true if successful, otherwise false
+        * Pre: picture[0..row][col] != ' '
+        *      picture[row][col] == xChar
+        *      row < picture.length - 1
+        * Post: The coordinates of all modified cells are pushed to fillStack
+        */
+      private boolean fillKnownSpacesV(fillStack, row, col) {
+        int startBlock = getBlock(false, row, col);
+        int usedSpace = rows[row].length - startBlock - 1; //The amount of space used when the clues for this column are compressed as much as possible
+        for(int i = startBlock; i < cols[col].length; i++) {
+          usedSpace += cols[col][i];
+        }
+        int extraSpace = picture.length - row - usedSpace;
+        int blockEnd = row + extraSpace + 1;
+        for(int i = 0; i < cols[col].length; i++) {
+          for(int j = blockEnd; j < blockEnd + cols[col][i] - extraSpace; j++) {
+            if(j >= picture.length || picture[j][col] == xChar) {
+              return false;
+            }
+            fill(j, col);
+            fillStack.push({j, col});
+          }
+          if(blockEnd != 0 && extraSpace == 0) {
+            if(picture[blockEnd - 1][col] == fillChar) {
+              return false;
+            }
+            cross(blockEnd - 1, col);
+            fillStack.push({blockEnd - 1, col});
+            if(!extrapolateRight(fillStack, row, col)) {
+              return false;
+            }
+          }
+          blockEnd += cols[col][i] + 1;
+        }
+        return true;
+      }
+
+      /** Fills in the immediate known filled spaces right of a filled space
+        * Returns false if it results in a contradiction, otherwise returns true
+        * Pre: picture[row][col] == fillChar
+        */
+      private boolean propagateRight(Stack<int[]> fillStack, int row, int col) {
+        int block = getBlock(true, row, col);
+        if(block != -1) {
+          int blockSize = rows[row][block];
+          //Find the start of the block being propagated
+          int blockStart = col;
+          while(blockStart > 0 && picture[row][blockStart - 1] != xChar) {
+            blockStart--;
+          }
+
+          //Fill in the known portion of the block
+          for(int i = col; i < blockStart + blockSize; i++) {
+            if(picture[row][i] == xChar) {
+              return false;
+            }
+            fill(row, i);
+            fillStack.push({row, i});
+          }
+          //If the whole block is filled put an x on the end
+          if(blockStart == col) {
+            if(picture[row][col + blockSize] == fillChar){
+              return false;
+            }
+            cross(row, col + blockSize);
+            fillStack.push({row, col + blockSize});
+          }
+          //propagate all the filled in blocks
+          for(int i = col; i < blockStart + blockSize; i++) {
+            if(!propagateDown(fillStack, row, i)) {
+              return false;
+            }
+          }
+        }
+        return true;
+      }
+
+      /** Fills in the immediately known filled below a filled space
+        * Returns false if it results in a contradiction, otherwise returns true
+        * Pre: picture[row][col] == fillChar
+        */
+      private boolean propagateDown(Stack<int[]> fillStack, int row, int col) {
+        int block = getBlock(false, row, col);
+        if(block != -1) {
+          int blockSize = cols[col][block];
+          //Find the start of the block being propagated
+          int blockStart = row;
+          while(blockStart > 0 && picture[blockStart - 1] != xChar) {
+            blockStart--;
+          }
+          //Fill in the known portion of the block
+          for(int i = row; i < blockStart + blockSize; i++) {
+            fill(i, col);
+            fillStack.push({i, col});
+          }
+          //If the whole block is filled put an x on the end
+          if(blockStart == col) {
+            cross(row + blockSize, col);
+            fillStack.push({row + blockSize, col});
+          }
+          //propagate all the filled in blocks
+          for(int i = row; i < blockStart + blockSize; i++) {
+            if(!propagateRight(fillStack, i, col)) {
+              return false;
+            }
+          }
+        }
       }
 
       /* Returns the block being worked on at a given space
@@ -330,128 +480,6 @@
         return block;
       }
 
-      /** Validates a given line. If the filled spots are valid, return true.
-        * otherwise return false
-        * @param index the row or column to be validated
-        * @param orientation specifies whether it is a row('r') or a column('c')
-        *                    Orientation defaults to row
-        * @param clues the clues given for the specified line
-         */
-      private boolean validateLine(int index, char orientation, int[] clues) {
-        //Declare and initialize line
-        char[] line = null;
-        if(orientation == 'c') {
-          line = new char[picture.length];
-          for(int i = 0; i < picture.length; i++) {
-            line[i] = picture[i][index];
-          }
-        } else {
-          line = picture[index];
-        }
-
-        int cell = 0;
-        int block = 0;
-        //Confirm that there is enough space to complete the line
-        while(block < clues.length) {
-          if(cell >= line.length) {
-            return false;
-          }
-          //Skip over x characters
-          if(line[cell] == xChar ) {
-            continue;
-          }
-          int i;
-          for(i = cell; i < cell + clues[block]; i++) {
-            if(i >= line.length) {
-              return false;
-            }
-            if(line[i] == xChar) {
-              block --;
-              break;
-            }
-          }
-          cell = i;
-          do {
-            cell ++;
-          } while(cell < line.length && line[cell] == fillChar);
-
-          block ++;
-        }
-
-        //Confirm that the blocks already filled do not overfill the clues
-        int block = 0;
-        int spaceStart = 0;
-        char prevChar = xChar;
-        boolean filled = true;
-        for(cell = 0; cell < line.length; cell++) {
-          if(line[cell] != xChar && prevChar = xChar) {
-            spaceStart = cell;
-          }
-          if(line[cell] == fillChar && prevChar != fillChar) {
-            for(int i = cell; i < Math.max(spaceStart + clues[block], cell); i++) {
-              if(lines[i] == xChar) {
-                cell = i;
-
-              }
-            }
-          }
-
-          prevChar = lines[cell];
-        }
-
-      }
-
-      /** Validates a given row. If the filled spots are valid, return true.
-        * otherwise return false */
-      private boolean validateCol(int col) {
-        //TODO update to be compatible with fillObvious method
-
-        boolean filled = false;
-        int block = 0;
-        int blockLength = 0;
-        int i;
-        for(i = 0; i < picture.length; i++) {
-          if(picture[i][col] == fillChar) {
-            if(filled) {
-              blockLength++;
-              if(blockLength > columns[col][block - 1]) {
-                return false;
-              }
-            } else {
-              blockLength = 1;
-              block++;
-              filled = true;
-              if(block > columns[col].length) {
-                return false;
-              }
-            }
-          } else if(picture[i][col] == xChar) {
-            if(filled) {
-              filled = false;
-              if(blockLength < columns[col][block - 1]) {
-                return false;
-              }
-            }
-          } else {
-            break;
-          }
-        }
-        if(filled) {
-          i += columns[col][block - 1] - blockLength;
-          if(i > picture.length) {
-            return false;
-          }
-        }
-        //i--;
-        for(int j = block; j < columns[col].length; j++) {
-          i += columns[col][j];
-          if(i > picture.length) {
-            return false;
-          }
-          i++;
-        }
-        return true;
-      }
 
       /** Prints the puzzle including the clues and the contents of the picture
         * array */
