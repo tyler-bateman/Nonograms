@@ -9,6 +9,8 @@
   import java.util.Scanner;
   import java.util.Arrays;
   import java.util.Stack;
+  import java.util.HashSet;
+  import java.util.Iterator;
 
   public class NonogramSolver{
     public static char fillChar = (char)9632;
@@ -115,6 +117,63 @@
         picture[row][col] = ' ';
       }
 
+      /** Fills in the given cell and pushes the coordinates onto fillStack if
+        * the cell is currently empty.
+        *
+        * If filling it results in the line being filled completely, crosses
+        * out the remaining cells
+        *
+        * if the cell is already crossed out, or filling it would overfill a line,
+        *  return false. Otherwise return true
+        */
+      public boolean cursoryFill(Stack<int[]> fillStack, int row, int col) {
+        if(picture[row][col] == ' ') {
+          fill(row, col);
+          int[] coord = {row, col};
+          fillStack.push(coord);
+
+          int fillCount = 0;
+          for(int i = 0; i < picture[row].length; i++) {
+            if(picture[row][i] == fillChar) {
+              fillCount++;
+            }
+          }
+          int totalFilled = 0;
+          for(int i = 0; i < rows[row].length; i++) {
+            totalFilled += rows[row][i];
+          }
+          if(fillCount == totalFilled) {
+          //if the line is completely filled, cross out the rest of the spaces
+            for(int i = 0; i < picture[row].length; i++) {
+              if(!cursoryCross(fillStack, row, col)) {
+                return false;
+              }
+            }
+          } else if(fillCount > totalFilled){
+            return false;
+          }
+        } else if(picture[row][col] == xChar) {
+          return false;
+        }
+        return true;
+      }
+
+      /** Crosses out the given cell and pushes the coordinates onto fillStack
+        * if the cell is currently empty.
+        *
+        * if the cell is already filled, return false. Otherwise return true.
+        */
+      public boolean cursoryCross(Stack<int[]> fillStack, int row, int col) {
+        if(picture[row][col] == ' ') {
+          cross(row, col);
+          int[] coord = {row, col};
+          fillStack.push(coord);
+        } else if(picture[row][col] == xChar) {
+          return false;
+        }
+        return true;
+      }
+
       /*Solves the puzzle by populating and printing the picture array*/
       public void solve() {
         int totalRowFilled = 0;
@@ -131,8 +190,10 @@
         }
         if(totalRowFilled == totalColFilled) {
           fillObvious();
-          //stackSolve;
           printPicture();
+          stackSolve();
+          printPicture();
+          System.out.println("Solved!");
         } else {
           System.out.println("No solution (Total filled mismatch)");
         }
@@ -195,7 +256,10 @@
         Stack<int[]> fillStack = new Stack<int[]>();
         int row = 0;
         int col = 0;
+        int counter = 0;
         main:while(row < picture.length) {
+          System.out.println(Arrays.deepToString(guessStack.toArray()));
+          counter++;
           //Skips over filled cells
           while(picture[row][col] != ' ') {
             if(col == picture[0].length - 1) {
@@ -205,21 +269,23 @@
                 break main;
               }
             } else {
+              System.out.println("Already filled...");
               col++;
             }
           }
           //Fill in the first empty cell
-          fill(row, col);
+          cursoryFill(fillStack, row, col);
           int[] guess = {row, col};
           guessStack.push(guess);
-          fillStack.push(guess);
 
           //Fill in cells made obvious by the guess
           boolean successRight = propagateRight(fillStack, row, col);
           boolean successDown = propagateDown(fillStack, row, col);
-
-          if(successRight && successDown) {
+          boolean noIncorrectLines = guessStack.isEmpty() || validateGuess(guess, fillStack);
+          if(successRight && successDown && noIncorrectLines) {
           //If the guess didn't result in a contradiction, move on
+          System.out.println("Successful fill");
+          printPicture();
             if(col == picture[0].length - 1) {
               row ++;
               col = 0;
@@ -228,18 +294,27 @@
             }
           } else {
           //If the guess resulted in a contradiction, revert all changes since the guess
+            printPicture();
+            System.out.println("unsuccessful fill");
             int[] cur = fillStack.pop();
-            while(!cur.equals(guess)) {
+            while(!Arrays.equals(guess, cur)) {
               clear(cur[0], cur[1]);
               cur = fillStack.pop();
             }
+            clear(row, col);
             //Cross out the cell instead
-            cross(row, col);
+
+            printPicture();
+            cursoryCross(fillStack, row, col);
             //Fill in cells made obvious by guess
             successRight = fillKnownSpacesH(fillStack, row, col);
             successDown = fillKnownSpacesV(fillStack, row, col);
+            noIncorrectLines = validateGuess(guess, fillStack);
 
-            if(successRight && successDown) {
+            System.out.println(successRight + " " + successDown + " " + noIncorrectLines);
+            if(successRight && successDown && noIncorrectLines) {
+              System.out.println("Successful cross");
+              printPicture();
             //If the guess didn't result in a contradiction, move on
               if(col == picture[0].length - 1) {
                 row++;
@@ -248,25 +323,33 @@
                 col++;
               }
             } else {
+              System.out.println("Unsuccessful cross");
+              System.out.println("Block: " + getBlock(true, row, col));
+              printPicture();
             // If the guess resulted in a contradiction, revert all changes since
             // the last unexhasted uncertain cell
               if(guessStack.isEmpty()) {
+                System.out.println("A");
                 return false;
               }
               int[] prevGuess = guessStack.pop();
               while(picture[prevGuess[0]][prevGuess[1]] == xChar) {
                 if(guessStack.isEmpty()) {
+                  System.out.println("B");
                   return false;
                 }
                 prevGuess = guessStack.pop();
               }
+              row = prevGuess[0];
+              col = prevGuess[1];
               cur = fillStack.pop();
-              while(!cur.equals(prevGuess)) {
+              while(!Arrays.equals(cur, prevGuess)) {
                 clear(cur[0], cur[1]);
                 cur = fillStack.pop();
               }
             }
           }
+          System.out.println(row + ", " + col);
         }
         return true;
       }
@@ -278,22 +361,22 @@
                col < picture[0].length - 1
         * Post: the coordinates of all modified cells are pushed to fillStack
         */
-      private boolean fillKnownSpacesH(Stack<int[]> fillStack, int row, int col) {
+      private boolean fillKnownSpacesH(Stack<int[]> fillStack, int row, int col) {//TODO: Has bug
         int startBlock = getBlock(true, row, col);
+        if(startBlock == - 1) return true;
         int usedSpace = rows[row].length - startBlock - 1; //The amount of space used when the clues for this row are compressed as much as possible
         for(int i = startBlock; i < rows[row].length; i++) {
           usedSpace += rows[row][i];
         }
+        System.out.println("Used space: " + usedSpace);
         int extraSpace = picture[row].length - col - usedSpace;
-        int blockEnd = col + extraSpace + 1; // The end of the block being partially filled
-        for(int i = 0; i < rows[row].length; i++) {
+        int blockEnd = col + extraSpace + 1; // The end of the block being worked on
+        for(int i = startBlock; i < rows[row].length; i++) {
           for(int j = blockEnd; j < blockEnd + rows[row][i] - extraSpace; j++) {
             if(j >= picture[row].length || picture[row][j] == xChar) {
               return false;
             }
-            fill(row, j);
-            int[] coord = {row, j};
-            fillStack.push(coord);
+            cursoryFill(fillStack, row, j);
             if(!propagateDown(fillStack, row, col)) {
               return false;
             }
@@ -302,9 +385,12 @@
             if(picture[row][blockEnd - 1] == fillChar){
               return false;
             }
-            cross (row, blockEnd - 1);
-            int[] coord = {row, blockEnd - 1};
-            fillStack.push(coord);
+            if(picture[row][blockEnd - 1] == ' '){
+              cross (row, blockEnd - 1);
+              int[] coord = {row, blockEnd - 1};
+              fillStack.push(coord);
+            }
+            cursoryCross(fillStack, row, blockEnd - 1);
           }
           blockEnd += rows[row][i] + 1;
         }
@@ -320,28 +406,25 @@
         */
       private boolean fillKnownSpacesV(Stack<int[]> fillStack, int row, int col) {
         int startBlock = getBlock(false, row, col);
+        if(startBlock == -1) return true;
         int usedSpace = rows[row].length - startBlock - 1; //The amount of space used when the clues for this column are compressed as much as possible
         for(int i = startBlock; i < columns[col].length; i++) {
           usedSpace += columns[col][i];
         }
         int extraSpace = picture.length - row - usedSpace;
         int blockEnd = row + extraSpace + 1;
-        for(int i = 0; i < columns[col].length; i++) {
+        for(int i = startBlock; i < columns[col].length; i++) {
           for(int j = blockEnd; j < blockEnd + columns[col][i] - extraSpace; j++) {
             if(j >= picture.length || picture[j][col] == xChar) {
               return false;
             }
-            fill(j, col);
-            int[] coord = {j, col};
-            fillStack.push(coord);
+            cursoryFill(fillStack, j, col);
           }
           if(blockEnd != 0 && extraSpace == 0) {
             if(picture[blockEnd - 1][col] == fillChar) {
               return false;
             }
-            cross(blockEnd - 1, col);
-            int[] coord = {blockEnd - 1, col};
-            fillStack.push(coord);
+            cursoryCross(fillStack, blockEnd - 1, col);
             if(!propagateRight(fillStack, row, col)) {
               return false;
             }
@@ -357,6 +440,7 @@
         */
       private boolean propagateRight(Stack<int[]> fillStack, int row, int col) {
         int block = getBlock(true, row, col);
+        //System.out.println(row + " " + col);
         if(block != -1) {
           int blockSize = rows[row][block];
           //Find the start of the block being propagated
@@ -367,24 +451,18 @@
 
           //Fill in the known portion of the block
           for(int i = col; i < blockStart + blockSize; i++) {
-            if(picture[row][i] == xChar) {
+            if(!cursoryFill(fillStack, row, i)) {
               return false;
             }
-            fill(row, i);
-            int[] coord = {row, i};
-            fillStack.push(coord);
           }
           //If the whole block is filled put an x on the end
-          if(blockStart == col) {
-            if(picture[row][col + blockSize] == fillChar){
+          if(blockStart == col && col + blockSize < picture[row].length) {
+            if(!cursoryCross(fillStack, row, col + blockSize)){
               return false;
             }
-            cross(row, col + blockSize);
-            int[] coord = {row, col + blockSize};
-            fillStack.push(coord);
           }
           //propagate all the filled in blocks
-          for(int i = col; i < blockStart + blockSize; i++) {
+          for(int i = col + 1; i < blockStart + blockSize - 1; i++) {
             if(!propagateDown(fillStack, row, i)) {
               return false;
             }
@@ -408,18 +486,18 @@
           }
           //Fill in the known portion of the block
           for(int i = row; i < blockStart + blockSize; i++) {
-            fill(i, col);
-            int[] coord = {i, col};
-            fillStack.push(coord);
+            if(!cursoryFill(fillStack, i, col)) {
+              return false;
+            }
           }
           //If the whole block is filled put an x on the end
-          if(blockStart == col) {
-            cross(row + blockSize, col);
-            int[] coord = {row + blockSize, col};
-            fillStack.push(coord);
+          if(blockStart == col && row + blockSize < picture.length) {
+            if(!cursoryCross(fillStack, row + blockSize, col)) {
+              return false;
+            }
           }
           //propagate all the filled in blocks
-          for(int i = row; i < blockStart + blockSize; i++) {
+          for(int i = row + 1; i < blockStart + blockSize ; i++) {
             if(!propagateRight(fillStack, i, col)) {
               return false;
             }
@@ -437,6 +515,9 @@
        */
       private int getBlock(boolean orientation, int row, int col) {
         int block = 0;
+        if(!orientation && row == 3 && col == 0) {
+          printPicture();
+        }
         if(orientation) { //Horizontal
           for(int i = 0; i < col; i++) {
             //Handles the ambiguous case where there is an unknown space
@@ -487,16 +568,107 @@
                 block++;
               }
             }
-            //Counts the blocks leading up to the cell in question
-            if(picture[i][col] == xChar && picture[i - 1][col] == fillChar){
-              block++;
-            }
           }
         }
         return block;
       }
 
+      /** Validates a row
+        * returns true if the row is either incomplete or correct
+        *   otherwise returns false
+        */
+      public boolean validateRow(int row) {
+        int block = 0;
+        int blockLength = 0;
+        boolean isFilled = false;
+        for(int i = 0; i < picture[0].length; i++) {
+          if(picture[row][i] == ' ') {
+            return true;
+          } else if(picture[row][i] == fillChar) {
+            if(isFilled) {
+              blockLength ++;
+            } else {
+              blockLength = 1;
+              block++;
+            }
+            isFilled = true;
+          } else {
+            isFilled = false;
+            if(block >= rows[row].length || blockLength != rows[row][block]) {
+              return false;
+            }
+          }
+        }
+        return block == rows[row].length - 1 && blockLength == rows[row][rows[row].length - 1];
+      }
 
+      /** Validates a column
+        * returns true if the column is either incomplete of correct
+        *   Otherwise returns false
+        */
+      public boolean validateCol(int col) {
+        int block = 0;
+        int blockLength = 0;
+        boolean isFilled = false;
+        for(int i = 0; i < picture.length; i++) {
+          if(picture[i][col] == ' ') {
+            return true;
+          } else if(picture[i][col] == fillChar) {
+            if(isFilled) {
+              blockLength++;
+            } else {
+              blockLength = 1;
+              block++;
+            }
+            isFilled = true;
+          } else {
+            isFilled = false;
+            if(blockLength != columns[col][block]) {
+              return false;
+            }
+          }
+        }
+        return block == columns[col].length - 1 && blockLength == columns[col][columns[col].length - 1];
+      }
+
+      /** Validates a guess
+        * Returns true if all rows and columns modified by the guess are either
+        *     incomplete or valid
+        * Precondition: fillStack contains guess
+        * Post: fillStack is unchanged
+        */
+      public boolean validateGuess(int[] guess, Stack<int[]> fillStack) {
+        Stack<int[]> tmp = new Stack<int[]>();
+        HashSet<Integer> modifiedRows = new HashSet<Integer>();
+        HashSet<Integer> modifiedCols = new HashSet<Integer>();
+
+        //populates sets with the indices of the modified rows and columns
+        int[] cur = {0, 0};
+        while(!Arrays.equals(cur, guess) && !fillStack.isEmpty()) {
+          cur = fillStack.pop();
+          tmp.add(cur);
+          modifiedRows.add(cur[0]);
+          modifiedCols.add(cur[1]);
+        }
+        while(!tmp.isEmpty()) {
+          fillStack.push(tmp.pop());
+        }
+        //Validates all modified rows
+        Iterator<Integer> rowIterator = modifiedRows.iterator();
+        while(rowIterator.hasNext()) {
+          if(!validateRow(rowIterator.next())) {
+            return false;
+          }
+        }
+
+        Iterator<Integer> colIterator = modifiedCols.iterator();
+        while(colIterator.hasNext()) {
+          if(!validateCol(colIterator.next())) {
+            return false;
+          }
+        }
+        return true;
+      }
       /** Prints the puzzle including the clues and the contents of the picture
         * array */
       public void printPicture() {
