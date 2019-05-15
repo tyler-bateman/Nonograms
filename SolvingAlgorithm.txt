@@ -1,0 +1,20 @@
+
+1. Fill in obvious cells
+2. Make a guess
+	Does this work without contradicting the clues?
+		if so: Move on to step 3
+		if not: Make opposite guess.
+			Does it work without contradicting the clues?
+				if so: Move on to step 3
+				if not: Pop guess off stack and revert it 
+3. Push guess on to the guess stack
+4. Fill in obvious cells based on guess
+	Does this work without contradicting the clues?
+	if so: Go back to step 2
+	if not: revert the cells filled in in step 4
+		pop guess off stack and revert it
+		Go back to step 2
+Repeat until solved (i.e. the end of the board is reached without causing a contradiction)
+
+
+
